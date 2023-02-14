@@ -7,11 +7,8 @@ import (
 	"github.com/uduncloud/easynode_task/common/sql"
 	"github.com/uduncloud/easynode_task/config"
 	"github.com/uduncloud/easynode_task/service"
-	"github.com/uduncloud/easynode_task/service/monitor/ether"
-	"github.com/uduncloud/easynode_task/service/monitor/tron"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"strconv"
 	"time"
 )
 
@@ -25,7 +22,6 @@ type Service struct {
 	nodeSourceDb *gorm.DB
 	taskDb       *gorm.DB
 	nodeInfoDb   *gorm.DB
-	clickhouse   map[int64]*gorm.DB
 	nodeErrorDb  *gorm.DB
 	log          *xlog.XLog
 }
@@ -52,22 +48,12 @@ func NewService(config *config.Config) *Service {
 		panic(err)
 	}
 
-	mp := make(map[int64]*gorm.DB)
-	for _, v := range config.BlockConfigs {
-		ck, err := sql.OpenCK(v.User, v.Password, v.Addr, v.DbName, v.Port, xg)
-		if err != nil {
-			panic(err)
-		}
-		mp[v.BlockChainCode] = ck
-	}
-
 	return &Service{
 		config:       config,
 		nodeSourceDb: s,
 		nodeErrorDb:  nodeErr,
 		nodeInfoDb:   info,
 		taskDb:       task,
-		clickhouse:   mp,
 		log:          xg,
 	}
 }
@@ -76,14 +62,6 @@ func (s *Service) Start() {
 
 	//每日分表
 	go s.createNodeTaskTable()
-
-	//检查 区块，交易数据完整
-	//for _, v := range s.config.BlockConfigs {
-	//	go s.CheckBlockAndTx(v)
-	//}
-
-	//分发执行，修复数据任务
-	//go s.HandlerNodeError()
 
 	//定时处理异常数据
 	go func() {
@@ -99,135 +77,6 @@ func (s *Service) Start() {
 			s.HandlerManyFailTask()
 		}
 	}()
-}
-
-func (s *Service) HandlerNodeError() {
-	for true {
-		<-time.After(10 * time.Hour)
-		cpSql := `
- INSERT IGNORE INTO %v ( block_chain, tx_hash, block_hash, block_number, source_type ) SELECT
-block_chain,
-tx_hash,
-block_hash,
-block_number,
-source_type 
-FROM %v
-`
-		cpSql = fmt.Sprintf(cpSql, s.config.NodeSourceDb.Table, s.config.NodeErrorDb.Table)
-
-		err := s.nodeSourceDb.Exec(cpSql).Error
-		if err != nil {
-			s.log.Printf("HandlerNodeError|error=%v", err)
-			continue
-		}
-
-		delSql := "TRUNCATE TABLE %v"
-		delSql = fmt.Sprintf(delSql, s.config.NodeErrorDb.Table)
-		err = s.nodeSourceDb.Exec(delSql).Error
-		if err != nil {
-			s.log.Printf("HandlerNodeError|error=%v", err)
-			continue
-		}
-	}
-}
-
-func (s *Service) CheckBlockAndTx(chain *config.BlockConfig) {
-	for true {
-		<-time.After(2 * time.Hour)
-		//querySql := `SELECT  MAX(block_number) as min_block_number,MIN(block_number) as max_block_number  FROM block b WHERE  block_time >=? and block_time<?`
-
-		now := time.Now().UnixNano()
-		pre := time.Now().Add(-3 * time.Hour).UnixNano()
-		var temp struct {
-			MinBlockNumber string
-			MaxBlockNumber string
-		}
-
-		err := s.clickhouse[chain.BlockChainCode].Table("block").Select("MAX(block_number) as max_block_number,MIN(block_number) as min_block_number").Where("id >=? and id<?", pre, now).Scan(&temp).Error
-		if err != nil {
-			s.log.Printf("CheckBlockAndTx|error=%v", err)
-			continue
-		}
-
-		var start, end int64
-		if len(temp.MinBlockNumber) > 1 {
-			start, _ = strconv.ParseInt(temp.MinBlockNumber, 0, 64)
-		}
-		if len(temp.MaxBlockNumber) > 1 {
-			end, _ = strconv.ParseInt(temp.MaxBlockNumber, 0, 64)
-		}
-		if start == 0 || end == 0 || start > end {
-			s.log.Printf("CheckBlockAndTx|error|start=%v,end=%v", start, end)
-			continue
-		}
-
-		for start <= end {
-
-			mid := start + 1000
-			if mid >= end {
-				mid = end + 1
-			}
-
-			go func(start, end int64, chain *config.BlockConfig) {
-				s.CheckBlockAndTxByRange(start, end, chain)
-			}(start, mid, chain)
-
-			start = mid
-		}
-
-		//_ = s.AddNodeError(list)
-
-	}
-}
-
-func (s *Service) CheckBlockAndTxByRange(start, end int64, chain *config.BlockConfig) {
-
-	list := make([]*service.NodeSource, 0, 50)
-
-	for start < end {
-		blockCount := s.getBlockCountByBlockNumber(chain.BlockChainCode, fmt.Sprintf("%v", start))
-		if blockCount < 1 {
-			//缺失块
-			ns := service.NodeSource{BlockChain: chain.BlockChainCode, SourceType: 2, BlockNumber: fmt.Sprintf("%v", start)}
-			list = append(list, &ns)
-		} else {
-
-			//检查 公链交易数量
-			txChainCount := s.GetBlockTransactionCountByNumberFromChain(start, chain)
-
-			if txChainCount > 1 {
-				//检查 tx
-				txCount := s.getTxCountByBlockNumber(chain.BlockChainCode, fmt.Sprintf("%v", start))
-				if txCount != txChainCount {
-					//缺失交易
-					ns := service.NodeSource{BlockChain: chain.BlockChainCode, SourceType: 2, BlockNumber: fmt.Sprintf("%v", start)}
-					list = append(list, &ns)
-				}
-
-				//是否需要检查收据数据
-				if chain.CheckReceipt {
-					//检查 receipt
-					receiptCount := s.getReceiptCountByBlockNumber(chain.BlockChainCode, fmt.Sprintf("%v", start))
-					if receiptCount != txChainCount {
-						//缺失收据
-						ns := service.NodeSource{BlockChain: chain.BlockChainCode, SourceType: 3, BlockNumber: fmt.Sprintf("%v", start)}
-						list = append(list, &ns)
-					}
-				}
-			}
-
-		}
-
-		if len(list) > 100 {
-			_ = s.AddNodeError(list)
-			list = list[len(list):]
-		}
-
-		start++
-	}
-
-	_ = s.AddNodeError(list)
-
 }
 
 func (s *Service) createNodeTaskTable() {
@@ -374,49 +223,6 @@ SELECT block_chain, block_number,block_hash,tx_hash,task_type,count(1) as c FROM
 			continue
 		}
 	}
-}
-
-func (s *Service) getBlockCountByBlockNumber(chainCode int64, number string) int64 {
-	var Num int64
-	err := s.clickhouse[chainCode].Table("block").Select("hash,count(1) as num").Where("block_number=?", number).Group("hash").Count(&Num).Error
-
-	if err != nil || Num == 0 {
-		return 0
-	}
-
-	return Num
-}
-
-func (s *Service) getTxCountByBlockNumber(chainCode int64, number string) int64 {
-	var Num int64
-	err := s.clickhouse[chainCode].Table("tx").Select("hash,count(1) as num").Where("block_number=?", number).Group("hash").Count(&Num).Error
-
-	if err != nil || Num == 0 {
-		return 0
-	}
-
-	return Num
-}
-
-func (s *Service) getReceiptCountByBlockNumber(chainCode int64, number string) int64 {
-	var Num int64
-	err := s.clickhouse[chainCode].Table("receipt").Select("transaction_hash,count(1) as num").Where("block_number=?", number).Group("transaction_hash").Count(&Num).Error
-	if err != nil || Num == 0 {
-		return 0
-	}
-	return Num
-}
-
-func (s *Service) GetBlockTransactionCountByNumberFromChain(number int64, chain *config.BlockConfig) int64 {
-	if chain.BlockChainCode == 200 {
-		return ether.GetBlockTransactionCountByNumberFromChain(number, chain.NodeHost, chain.NodeKey)
-	}
-
-	if chain.BlockChainCode == 205 {
-		return tron.GetBlockTransactionCountByNumberFromChain(number, chain.NodeHost, chain.NodeKey)
-	}
-
-	return 0
 }
 
 func (s *Service) AddNodeError(list []*service.NodeSource) error {

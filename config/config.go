@@ -49,14 +49,7 @@ type BlockConfig struct {
 	BlockChainName string `json:"BlockChainName"`
 	BlockMin       int64  `json:"BlockMin"`
 	BlockChainCode int64  `json:"BlockChainCode"`
-	CheckReceipt   bool   `json:"CheckReceipt"`
 	BlockMax       int64  `json:"BlockMax"`
 	NodeKey        string `json:"NodeKey"`
 	NodeHost       string `json:"NodeHost"`
-	User           string `json:"CH_User" gorm:"column:User"`
-	//Table          string `json:"Table" gorm:"column:Table"`
-	Port     int    `json:"CH_Port" gorm:"column:Port"`
-	DbName   string `json:"CH_DbName" gorm:"column:DbName"`
-	Addr     string `json:"CH_Addr" gorm:"column:Addr"`
-	Password string `json:"CH_Password" gorm:"column:Password"`
 }
