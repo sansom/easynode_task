@@ -56,7 +56,7 @@ easynode_task是easynode系统的基础和核心服务，是其他服务的运�
   "Chains": [ //公链配置
     {
       "NodeHost": "https://eth-mainnet.g.alchemy.com/v2",//三方区块链节点的地址
-      "NodeKey": "RzxBjjh_c4y0LVHZ7GNm8zoXEZR3HYop",//三方区块链节点key
+      "NodeKey": "**********************",//三方区块链节点key
       "BlockChainName": "eth",//公链名称
       "BlockChainCode": 200,//公链代码
       "BlockMin": 16103500,//区块最低高度
@@ -64,7 +64,7 @@ easynode_task是easynode系统的基础和核心服务，是其他服务的运�
     },
     {
       "NodeHost": "https://api.trongrid.io",
-      "NodeKey": "244f918d-56b5-4a16-9665-9637598b1223",
+      "NodeKey": "************************",
       "BlockChainName": "tron",
       "BlockChainCode": 205,
       "BlockMin": 47153472,
