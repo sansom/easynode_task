@@ -68,7 +68,7 @@ easynode_task是easynode系统的基础和核心服务，是其他服务的运�
       "BlockChainName": "tron",
       "BlockChainCode": 205,
       "BlockMin": 47153472,
-      "BlockMax":0
+      "BlockMax":0//区块最高高度，如果是0，则表示时时获取公链最新高度
     }
   ]
 }
