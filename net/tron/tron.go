@@ -2,7 +2,6 @@ package tron
 
 import (
 	"errors"
-	"fmt"
 	"github.com/tidwall/gjson"
 	"io/ioutil"
 	"net/http"
@@ -11,10 +10,7 @@ import (
 
 // Eth_GetBlockNumber 获取最新区块高度
 func Eth_GetBlockNumber(host string, token string) (string, error) {
-
-	//url := "https://eth-mainnet.g.alchemy.com/v2/demo"
-
-	host = fmt.Sprintf("%v/%v", host, "jsonrpc")
+	//host = fmt.Sprintf("%v/%v", host, "jsonrpc")
 	query := `
 {
     "id": 1,
@@ -22,6 +18,10 @@ func Eth_GetBlockNumber(host string, token string) (string, error) {
     "method": "eth_blockNumber"
 }
 `
+	return send(host, token, query)
+}
+
+func send(host, token string, query string) (string, error) {
 	payload := strings.NewReader(query)
 
 	req, err := http.NewRequest("POST", host, payload)
@@ -45,8 +45,10 @@ func Eth_GetBlockNumber(host string, token string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	if gjson.ParseBytes(body).Get("error").Exists() {
 		return "", errors.New(string(body))
 	}
+
 	return string(body), nil
 }

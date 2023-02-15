@@ -11,10 +11,9 @@ import (
 
 // Eth_GetBlockNumber 获取最新区块高度
 func Eth_GetBlockNumber(host string, token string) (string, error) {
-
-	//url := "https://eth-mainnet.g.alchemy.com/v2/demo"
-
-	host = fmt.Sprintf("%v/%v", host, token)
+	if len(token) > 1 {
+		host = fmt.Sprintf("%v/%v", host, token)
+	}
 	query := `
 {
     "id": 1,
@@ -22,6 +21,10 @@ func Eth_GetBlockNumber(host string, token string) (string, error) {
     "method": "eth_blockNumber"
 }
 `
+	return send(host, query)
+}
+
+func send(host string, query string) (string, error) {
 	payload := strings.NewReader(query)
 
 	req, err := http.NewRequest("POST", host, payload)
@@ -45,8 +48,10 @@ func Eth_GetBlockNumber(host string, token string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	if gjson.ParseBytes(body).Get("error").Exists() {
 		return "", errors.New(string(body))
 	}
+
 	return string(body), nil
 }
