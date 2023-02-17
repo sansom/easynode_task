@@ -122,7 +122,10 @@ func (s *Service) NewBlockTask(v config.BlockConfig, log *logrus.Entry) error {
 	if UsedMaxNumber >= v.BlockMax {
 		return errors.New("UsedMaxNumber > BlockMax")
 	}
+
 	list := make([]*service.NodeSource, 0)
+	UsedMaxNumber++
+
 	for UsedMaxNumber <= v.BlockMax {
 		ns := &service.NodeSource{BlockChain: v.BlockChainCode, BlockNumber: fmt.Sprintf("%v", UsedMaxNumber), SourceType: 2}
 		list = append(list, ns)
