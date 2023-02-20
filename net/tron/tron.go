@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // Eth_GetBlockNumber 获取最新区块高度
@@ -34,7 +35,8 @@ func send(host, token string, query string) (string, error) {
 	req.Header.Add("cache-control", "no-cache")
 	req.Header.Add("TRON_PRO_API_KEY", token)
 
-	res, err := http.DefaultClient.Do(req)
+	client := http.Client{Timeout: 40 * time.Second}
+	res, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
