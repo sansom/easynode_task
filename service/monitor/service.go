@@ -70,11 +70,12 @@ func (s *Service) Start() {
 			//处理僵死任务：即 长期处理进行中 status=3
 			s.HandlerDeadTask()
 
+			//处理任务失败多次的
+			s.HandlerManyFailTask()
+
 			//失败任务重试
 			s.RetryTaskForFail()
 
-			//处理任务失败多次的
-			s.HandlerManyFailTask()
 		}
 	}()
 }
